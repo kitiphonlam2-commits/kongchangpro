@@ -85,6 +85,18 @@
 
             <!-- Header Actions -->
             <div class="flex flex-wrap items-center justify-center xl:justify-end gap-1.5 w-full xl:w-auto">
+                <!-- กลุ่มซิงก์ออนไลน์ข้ามเครื่อง -->
+                <div class="flex items-center gap-1 bg-slate-800/80 p-1 rounded-xl border border-emerald-700/60">
+                    <button onclick="openCloudSyncModal()" id="cloudHeaderBtn" title="ตั้งค่าการซิงก์ข้อมูลข้ามเครื่องผ่าน Google Drive" class="hover:bg-slate-700 text-emerald-300 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5">
+                        <span id="cloudHeaderDot" class="w-2 h-2 rounded-full bg-slate-400 inline-block"></span>
+                        <i data-lucide="cloud" class="w-3.5 h-3.5 text-emerald-400"></i>
+                        <span id="cloudHeaderLabel">ซิงก์ออนไลน์</span>
+                    </button>
+                    <button onclick="manualSyncFromCloud()" id="cloudRefreshBtn" title="ดึงข้อมูลล่าสุดจาก Cloud ทันที" class="hover:bg-slate-700 text-sky-300 p-1.5 rounded-lg text-xs transition" aria-label="ดึงข้อมูลล่าสุด">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                    </button>
+                </div>
+
                 <!-- กลุ่มจัดการระบบ & สำรองข้อมูล -->
                 <div class="flex flex-wrap items-center gap-1.5 bg-slate-800/60 p-1 rounded-xl border border-slate-700/70">
                     <button onclick="openPersonnelModal()" title="จัดการเพิ่ม/ลบ รายชื่อบุคลากรและกรรมการ" class="hover:bg-slate-700 text-purple-300 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5">
@@ -1005,10 +1017,402 @@
         </div>
     </div>
 
+    <!-- Modal ตั้งค่าซิงก์ข้อมูลออนไลน์ข้ามเครื่อง (Google Apps Script + Google Drive) -->
+    <div id="cloudSyncModal" class="fixed inset-0 bg-slate-900/55 backdrop-blur-sm hidden items-center justify-center p-4 z-50 transition-all duration-300">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-emerald-100">
+            <div class="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 text-white px-6 py-4 flex justify-between items-center">
+                <h3 class="text-base font-bold flex items-center gap-2 text-emerald-300">
+                    <i data-lucide="cloud" class="w-5 h-5 text-emerald-400"></i>
+                    <span>ซิงก์ข้อมูลออนไลน์ข้ามเครื่อง (เห็นตรงกันทุกเครื่อง)</span>
+                </h3>
+                <button onclick="closeCloudSyncModal()" class="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-slate-800 transition">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="p-6 space-y-4 max-h-[82vh] overflow-y-auto">
+                <!-- สถานะการเชื่อมต่อ -->
+                <div id="cloudModalStatusBox" class="p-3.5 rounded-2xl border bg-slate-50 border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div class="text-xs">
+                        <div class="font-bold text-slate-700 flex items-center gap-1.5">
+                            <span id="cloudModalDot" class="w-2.5 h-2.5 rounded-full bg-slate-400 inline-block"></span>
+                            <span id="cloudModalStatusText">ยังไม่ได้เชื่อมต่อ Google Apps Script</span>
+                        </div>
+                        <div id="cloudModalLastSync" class="text-[11px] text-slate-500 mt-0.5">ข้อมูลจะเก็บเฉพาะในเบราว์เซอร์เครื่องนี้จนกว่าจะใส่ลิงก์ Web App (/exec)</div>
+                    </div>
+                    <div class="flex items-center gap-1.5 shrink-0">
+                        <button type="button" onclick="manualSyncFromCloud()" class="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-xl text-xs font-bold transition flex items-center gap-1">
+                            <i data-lucide="cloud-download" class="w-3.5 h-3.5"></i>
+                            <span>ดึงข้อมูล</span>
+                        </button>
+                        <button type="button" onclick="manualSyncToCloud()" class="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition flex items-center gap-1">
+                            <i data-lucide="cloud-upload" class="w-3.5 h-3.5"></i>
+                            <span>ส่งขึ้น Cloud</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ช่องใส่ URL Web App -->
+                <div class="bg-emerald-50/50 p-4 rounded-2xl border border-emerald-100 space-y-2.5">
+                    <label class="block text-xs font-bold text-emerald-900">ลิงก์ Google Apps Script Web App URL (ลงท้ายด้วย /exec)</label>
+                    <input type="url" id="cloudUrlInput" placeholder="https://script.google.com/macros/s/...../exec" class="w-full border border-emerald-200 rounded-xl p-2.5 text-xs font-mono bg-white focus:ring-2 focus:ring-emerald-300 focus:outline-none">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <span class="text-[11px] text-slate-500">เคล็ดลับ: นำลิงก์เดียวกันไปวางในตัวแปร <code class="bg-white px-1.5 py-0.5 rounded border text-rose-600">DEFAULT_CLOUD_SYNC_URL</code> ในโค้ด HTML ก่อนขึ้น GitHub Pages เพื่อให้ทุกเครื่องเชื่อมให้อัตโนมัติ</span>
+                        <div class="flex gap-2">
+                            <button type="button" onclick="disconnectCloudUrl()" class="px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-xs font-semibold transition">ตัดการเชื่อมต่อ</button>
+                            <button type="button" onclick="saveCloudUrl()" class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-sm">บันทึกและเชื่อมต่อ</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- คู่มือ + โค้ด Apps Script พร้อมคัดลอก -->
+                <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2.5">
+                    <div class="flex items-center justify-between gap-2">
+                        <h4 class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                            <i data-lucide="code-2" class="w-4 h-4 text-indigo-500"></i>
+                            โค้ด Google Apps Script (วางใน script.google.com)
+                        </h4>
+                        <button type="button" onclick="copyAppsScriptCode()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[11px] font-bold transition flex items-center gap-1 shadow-sm">
+                            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                            <span>คัดลอกโค้ด Apps Script</span>
+                        </button>
+                    </div>
+                    <ol class="text-[11px] text-slate-600 list-decimal list-inside space-y-1">
+                        <li>เปิด <b>script.google.com</b> → สร้างโปรเจกต์ใหม่ (เช่น <b>KongchangProjectsSync</b>) แล้ววางโค้ดด้านล่าง</li>
+                        <li>กด <b>Deploy (ทำให้ใช้งานได้)</b> → <b>New deployment</b> → เลือกประเภท <b>Web app</b></li>
+                        <li>ตั้งค่า Execute as: <b>Me (ตัวฉัน)</b> และ Who has access: <b>Anyone (ทุกคน)</b> → กด Deploy และอนุญาตสิทธิ์</li>
+                        <li>คัดลอกลิงก์ Web app (ลงท้ายด้วย <b>/exec</b>) มาวางในช่องด้านบน หรือวางใน <code class="bg-white px-1 rounded border">DEFAULT_CLOUD_SYNC_URL</code> ในไฟล์ HTML</li>
+                    </ol>
+                    <pre id="appsScriptCodePreview" class="bg-slate-900 text-emerald-300 text-[11px] p-3 rounded-xl overflow-x-auto max-h-48 font-mono leading-relaxed"></pre>
+                </div>
+
+                <div class="pt-2 flex justify-end border-t border-slate-100">
+                    <button type="button" onclick="closeCloudSyncModal()" class="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs transition">ปิดหน้าต่าง</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- JavaScript Application Logic -->
     <script>
+        // =========================================================================
+        // ตั้งค่าลิงก์ Google Apps Script Web App (/exec) เพื่อให้ทุกเครื่องเห็นข้อมูลตรงกันอัตโนมัติ
+        // วางลิงก์ที่ได้จากการ Deploy ลงในเครื่องหมายคำพูดด้านล่าง ก่อนอัปโหลดขึ้น GitHub Pages
+        // =========================================================================
+        const DEFAULT_CLOUD_SYNC_URL = "";
+        const CLOUD_URL_STORAGE_KEY = 'engineering_cloud_sync_url';
+        const CLOUD_LAST_SYNC_KEY = 'engineering_cloud_last_sync';
+
         let projects = [];
         let currentlyFilteredProjects = [];
+        let cloudSyncTimer = null;
+        let isCloudSyncing = false;
+        let hasInitialCloudLoadFinished = false;
+        let lastCloudUpdatedAt = '';
+
+        const APPS_SCRIPT_TEMPLATE = `const DB_FILE_NAME = 'Kongchang_Projects_DB.json';
+
+function getOrCreateDbFile() {
+  const files = DriveApp.getFilesByName(DB_FILE_NAME);
+  if (files.hasNext()) return files.next();
+  const initialData = JSON.stringify({
+    version: 2,
+    updatedAt: '',
+    projects: [],
+    personnel: []
+  }, null, 2);
+  return DriveApp.createFile(DB_FILE_NAME, initialData, MimeType.PLAIN_TEXT);
+}
+
+function doGet(e) {
+  try {
+    const file = getOrCreateDbFile();
+    const content = file.getBlob().getDataAsString('UTF-8');
+    return ContentService
+      .createTextOutput(content || '{}')
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: false, error: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function doPost(e) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    const raw = (e && e.postData && e.postData.contents) ? e.postData.contents : '{}';
+    const parsed = JSON.parse(raw);
+    const file = getOrCreateDbFile();
+    file.setContent(JSON.stringify(parsed, null, 2));
+    return ContentService
+      .createTextOutput(JSON.stringify({
+        ok: true,
+        updatedAt: parsed.updatedAt || new Date().toISOString()
+      }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: false, error: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    try { lock.releaseLock(); } catch (ignore) {}
+  }
+}`;
+
+        function getCloudSyncUrl() {
+            const saved = (localStorage.getItem(CLOUD_URL_STORAGE_KEY) || '').trim();
+            return saved || (DEFAULT_CLOUD_SYNC_URL || '').trim();
+        }
+
+        function updateCloudUI(state = 'idle', detailText = '') {
+            const url = getCloudSyncUrl();
+            const dot = document.getElementById('cloudHeaderDot');
+            const label = document.getElementById('cloudHeaderLabel');
+            const modalDot = document.getElementById('cloudModalDot');
+            const modalText = document.getElementById('cloudModalStatusText');
+            const modalSub = document.getElementById('cloudModalLastSync');
+            const modalBox = document.getElementById('cloudModalStatusBox');
+            const refreshBtn = document.getElementById('cloudRefreshBtn');
+
+            if (!url) {
+                if (dot) dot.className = 'w-2 h-2 rounded-full bg-slate-400 inline-block';
+                if (label) label.textContent = 'ตั้งค่าซิงก์';
+                if (modalDot) modalDot.className = 'w-2.5 h-2.5 rounded-full bg-slate-400 inline-block';
+                if (modalText) modalText.textContent = 'ยังไม่ได้เชื่อมต่อ Google Apps Script (โหมดออฟไลน์)';
+                if (modalSub) modalSub.textContent = 'ใส่ลิงก์ Web App (/exec) เพื่อซิงก์ข้อมูลให้ตรงกันทุกเครื่อง';
+                if (modalBox) modalBox.className = 'p-3.5 rounded-2xl border bg-slate-50 border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2';
+                updateAutoSaveBadge('local');
+                return;
+            }
+
+            if (state === 'syncing') {
+                if (dot) dot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-ping inline-block';
+                if (label) label.textContent = 'กำลังซิงก์...';
+                if (refreshBtn) refreshBtn.classList.add('animate-spin');
+                if (modalDot) modalDot.className = 'w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse inline-block';
+                if (modalText) modalText.textContent = detailText || 'กำลังซิงก์ข้อมูลกับ Google Drive...';
+                updateAutoSaveBadge('syncing');
+            } else if (state === 'error') {
+                if (dot) dot.className = 'w-2 h-2 rounded-full bg-rose-500 inline-block';
+                if (label) label.textContent = 'ซิงก์ขัดข้อง';
+                if (refreshBtn) refreshBtn.classList.remove('animate-spin');
+                if (modalDot) modalDot.className = 'w-2.5 h-2.5 rounded-full bg-rose-500 inline-block';
+                if (modalText) modalText.textContent = 'เชื่อมต่อ Cloud ไม่สำเร็จ (ข้อมูลปลอดภัยในเครื่องแล้ว)';
+                if (modalSub) modalSub.textContent = detailText || 'ตรวจสอบอินเทอร์เน็ตหรือสิทธิ์การ Deploy Web App (Anyone)';
+                if (modalBox) modalBox.className = 'p-3.5 rounded-2xl border bg-rose-50 border-rose-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2';
+                updateAutoSaveBadge('error');
+            } else {
+                const lastSync = localStorage.getItem(CLOUD_LAST_SYNC_KEY);
+                const timeText = lastSync ? new Date(lastSync).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '';
+                if (dot) dot.className = 'w-2 h-2 rounded-full bg-emerald-400 inline-block';
+                if (label) label.textContent = timeText ? `ออนไลน์ ${timeText}` : 'ซิงก์ออนไลน์';
+                if (refreshBtn) refreshBtn.classList.remove('animate-spin');
+                if (modalDot) modalDot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block';
+                if (modalText) modalText.textContent = 'เชื่อมต่อ Google Drive Cloud Sync แล้ว';
+                if (modalSub) modalSub.textContent = lastSync
+                    ? `ซิงก์ล่าสุด: ${new Date(lastSync).toLocaleString('th-TH')} (อัปเดตอัตโนมัติทุกเครื่อง)`
+                    : 'พร้อมซิงก์ข้อมูลอัตโนมัติทุกครั้งที่เปิดหรือบันทึก';
+                if (modalBox) modalBox.className = 'p-3.5 rounded-2xl border bg-emerald-50/70 border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2';
+                updateAutoSaveBadge('synced');
+            }
+        }
+
+        function isAnyModalOpen() {
+            const ids = ['projectModal', 'personnelModal', 'batchEditModal', 'urgentLetterModal', 'cloudSyncModal'];
+            return ids.some(id => {
+                const el = document.getElementById(id);
+                return el && !el.classList.contains('hidden');
+            });
+        }
+
+        async function syncFromCloud(silent = false) {
+            const url = getCloudSyncUrl();
+            if (!url) {
+                hasInitialCloudLoadFinished = true;
+                updateCloudUI('idle');
+                return false;
+            }
+            if (isCloudSyncing) return false;
+            isCloudSyncing = true;
+            updateCloudUI('syncing', 'กำลังดึงข้อมูลล่าสุดจาก Cloud...');
+
+            try {
+                const sep = url.includes('?') ? '&' : '?';
+                const res = await fetch(`${url}${sep}_t=${Date.now()}`, { method: 'GET', cache: 'no-store' });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+
+                // รองรับทั้งรูปแบบ Object { projects, personnel, updatedAt } และ Array เดิม
+                const cloudProjects = Array.isArray(data) ? data : (Array.isArray(data.projects) ? data.projects : null);
+                const cloudPersonnel = (!Array.isArray(data) && Array.isArray(data.personnel) && data.personnel.length > 0) ? data.personnel : null;
+                const cloudUpdatedAt = (!Array.isArray(data) && data.updatedAt) ? data.updatedAt : '';
+
+                if (cloudProjects !== null) {
+                    const cloudIsEmptySeed = cloudProjects.length === 0 && !cloudUpdatedAt;
+                    if (cloudIsEmptySeed && projects.length > 0) {
+                        // Cloud ยังว่างเปล่า (เพิ่งติดตั้งครั้งแรก) -> ส่งข้อมูลที่มีในเครื่องขึ้นไปตั้งต้นให้ทันที
+                        hasInitialCloudLoadFinished = true;
+                        isCloudSyncing = false;
+                        await syncToCloud(true);
+                        if (!silent) showToast('อัปโหลดข้อมูลเริ่มต้นขึ้น Google Drive เรียบร้อยแล้ว', 'success');
+                        return true;
+                    }
+
+                    // เก็บสถานะ checkbox ที่ผู้ใช้ติ๊กไว้บนเครื่องนี้ไม่ให้หาย
+                    const selectedMap = new Map(projects.map(p => [p.id, !!p.selected]));
+                    projects = cloudProjects.map(p => ({ ...p, selected: !!selectedMap.get(p.id) }));
+                    localStorage.setItem('engineering_projects', JSON.stringify(projects));
+
+                    if (cloudPersonnel) {
+                        personnelNames = cloudPersonnel;
+                        localStorage.setItem('engineering_personnel', JSON.stringify(personnelNames));
+                        populatePersonnelDropdowns();
+                    }
+
+                    if (cloudUpdatedAt) lastCloudUpdatedAt = cloudUpdatedAt;
+                    localStorage.setItem(CLOUD_LAST_SYNC_KEY, new Date().toISOString());
+                    renderTable();
+                }
+
+                hasInitialCloudLoadFinished = true;
+                isCloudSyncing = false;
+                updateCloudUI('synced');
+                if (!silent) showToast(`ดึงข้อมูลล่าสุดจาก Cloud แล้ว (${projects.length} โครงการ)`, 'success');
+                return true;
+            } catch (err) {
+                console.error('Cloud sync GET error:', err);
+                hasInitialCloudLoadFinished = true;
+                isCloudSyncing = false;
+                updateCloudUI('error', err.message || 'ไม่สามารถเชื่อมต่อได้');
+                if (!silent) showToast('ดึงข้อมูลจาก Cloud ไม่สำเร็จ (แสดงข้อมูลในเครื่องแทน)', 'error');
+                return false;
+            }
+        }
+
+        async function syncToCloud(silent = true) {
+            const url = getCloudSyncUrl();
+            if (!url) return false;
+            if (!hasInitialCloudLoadFinished && silent) return false;
+
+            isCloudSyncing = true;
+            updateCloudUI('syncing', 'กำลังบันทึกข้อมูลขึ้น Cloud...');
+
+            const nowIso = new Date().toISOString();
+            const payload = {
+                version: 2,
+                updatedAt: nowIso,
+                projects: projects.map(p => ({ ...p, selected: false })),
+                personnel: personnelNames
+            };
+
+            try {
+                // ใช้ text/plain เพื่อหลีกเลี่ยง CORS Preflight (OPTIONS) ของ Google Apps Script
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(payload)
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const result = await res.json();
+                if (result && result.ok === false) throw new Error(result.error || 'Apps Script Error');
+
+                lastCloudUpdatedAt = nowIso;
+                localStorage.setItem(CLOUD_LAST_SYNC_KEY, nowIso);
+                isCloudSyncing = false;
+                updateCloudUI('synced');
+                if (!silent) showToast(`ส่งข้อมูลขึ้น Cloud เรียบร้อยแล้ว (${projects.length} โครงการ)`, 'success');
+                return true;
+            } catch (err) {
+                console.error('Cloud sync POST error:', err);
+                isCloudSyncing = false;
+                updateCloudUI('error', err.message || 'บันทึกขึ้น Cloud ไม่สำเร็จ');
+                if (!silent) showToast('ส่งข้อมูลขึ้น Cloud ไม่สำเร็จ กรุณาตรวจสอบลิงก์ /exec', 'error');
+                return false;
+            }
+        }
+
+        function scheduleCloudSync() {
+            if (!getCloudSyncUrl()) return;
+            clearTimeout(cloudSyncTimer);
+            cloudSyncTimer = setTimeout(() => {
+                syncToCloud(true);
+            }, 600);
+        }
+
+        function openCloudSyncModal() {
+            const input = document.getElementById('cloudUrlInput');
+            if (input) input.value = getCloudSyncUrl();
+            const preview = document.getElementById('appsScriptCodePreview');
+            if (preview) preview.textContent = APPS_SCRIPT_TEMPLATE;
+            updateCloudUI(isCloudSyncing ? 'syncing' : 'idle');
+            document.getElementById('cloudSyncModal').classList.remove('hidden');
+            document.getElementById('cloudSyncModal').classList.add('flex');
+            lucide.createIcons();
+        }
+
+        function closeCloudSyncModal() {
+            document.getElementById('cloudSyncModal').classList.add('hidden');
+            document.getElementById('cloudSyncModal').classList.remove('flex');
+        }
+
+        async function saveCloudUrl() {
+            const input = document.getElementById('cloudUrlInput');
+            const val = (input?.value || '').trim();
+            if (!val) {
+                showToast('กรุณาวางลิงก์ Google Apps Script Web App (/exec)', 'warning');
+                return;
+            }
+            if (!val.startsWith('https://script.google.com/')) {
+                showToast('ลิงก์ควรขึ้นต้นด้วย https://script.google.com/macros/s/.../exec', 'warning');
+                return;
+            }
+            localStorage.setItem(CLOUD_URL_STORAGE_KEY, val);
+            showToast('บันทึกลิงก์ Cloud Sync แล้ว กำลังทดสอบเชื่อมต่อ...', 'info');
+            await syncFromCloud(false);
+        }
+
+        function disconnectCloudUrl() {
+            localStorage.removeItem(CLOUD_URL_STORAGE_KEY);
+            localStorage.removeItem(CLOUD_LAST_SYNC_KEY);
+            const input = document.getElementById('cloudUrlInput');
+            if (input) input.value = DEFAULT_CLOUD_SYNC_URL || '';
+            updateCloudUI('idle');
+            showToast('ยกเลิกการเชื่อมต่อ Cloud Sync บนเครื่องนี้แล้ว', 'info');
+        }
+
+        function manualSyncFromCloud() {
+            if (!getCloudSyncUrl()) {
+                openCloudSyncModal();
+                showToast('กรุณาใส่ลิงก์ Google Apps Script (/exec) ก่อนใช้งาน', 'warning');
+                return;
+            }
+            syncFromCloud(false);
+        }
+
+        function manualSyncToCloud() {
+            if (!getCloudSyncUrl()) {
+                openCloudSyncModal();
+                showToast('กรุณาใส่ลิงก์ Google Apps Script (/exec) ก่อนใช้งาน', 'warning');
+                return;
+            }
+            hasInitialCloudLoadFinished = true;
+            syncToCloud(false);
+        }
+
+        function copyAppsScriptCode() {
+            navigator.clipboard.writeText(APPS_SCRIPT_TEMPLATE).then(() => {
+                showToast('คัดลอกโค้ด Google Apps Script แล้ว นำไปวางที่ script.google.com ได้เลย', 'success');
+            }).catch(() => {
+                const ta = document.createElement('textarea');
+                ta.value = APPS_SCRIPT_TEMPLATE;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                showToast('คัดลอกโค้ด Google Apps Script แล้ว', 'success');
+            });
+        }
 
         // รายชื่อบุคลากรเริ่มต้น
         const defaultPersonnelNames = [
@@ -1090,12 +1494,13 @@
                 }
             } else {
                 personnelNames = [...defaultPersonnelNames];
-                savePersonnelData();
+                savePersonnelData(false);
             }
         }
 
-        function savePersonnelData() {
+        function savePersonnelData(syncCloud = true) {
             localStorage.setItem('engineering_personnel', JSON.stringify(personnelNames));
+            if (syncCloud) scheduleCloudSync();
         }
 
         // ตราครุฑมาตรฐานสำหรับแทรกลงในไฟล์ Word
@@ -1263,7 +1668,23 @@
             populatePersonnelDropdowns();
             loadInitialData();
             renderTable();
+            updateCloudUI('idle');
             lucide.createIcons();
+
+            // ดึงข้อมูลล่าสุดจาก Cloud อัตโนมัติตอนเปิดเว็บ
+            syncFromCloud(true);
+
+            // ซิงก์อัตโนมัติเมื่อสลับกลับมาที่แท็บนี้ และทุก 60 วินาที (เมื่อไม่ได้เปิดหน้าต่างแก้ไขอยู่)
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible' && getCloudSyncUrl() && !isAnyModalOpen()) {
+                    syncFromCloud(true);
+                }
+            });
+            setInterval(() => {
+                if (document.visibilityState === 'visible' && getCloudSyncUrl() && !isAnyModalOpen() && !isCloudSyncing) {
+                    syncFromCloud(true);
+                }
+            }, 60000);
 
             // ปิด Modal เมื่อกดปุ่ม Escape
             document.addEventListener('keydown', (e) => {
@@ -1272,6 +1693,7 @@
                     closePersonnelModal();
                     closeBatchModal();
                     closeUrgentLetterModal();
+                    closeCloudSyncModal();
                 }
             });
         });
@@ -1324,25 +1746,43 @@
                         selected: false
                     }
                 ];
-                saveToStorage();
+                saveToStorage(false);
             }
         }
 
-        function saveToStorage() {
+        function saveToStorage(syncCloud = true) {
             localStorage.setItem('engineering_projects', JSON.stringify(projects));
             updateAutoSaveBadge();
+            if (syncCloud) scheduleCloudSync();
         }
 
         // ===== ระบบบันทึกอัตโนมัติ (Auto-Save) =====
         const DRAFT_KEY = 'engineering_project_form_draft';
         let draftSaveTimer = null;
 
-        function updateAutoSaveBadge() {
+        function updateAutoSaveBadge(mode = null) {
             const el = document.getElementById('autoSaveBadge');
             if (!el) return;
+            const hasCloud = !!getCloudSyncUrl();
             const now = new Date();
             const t = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-            el.innerHTML = '<i data-lucide="cloud-check" class="w-3.5 h-3.5 text-emerald-500 inline"></i> บันทึกอัตโนมัติ ' + t;
+
+            if (mode === 'syncing') {
+                el.className = 'fixed bottom-4 right-4 bg-white/95 backdrop-blur border border-amber-200 text-amber-700 text-[11px] font-semibold px-3.5 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 z-50';
+                el.innerHTML = '<i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-amber-500 inline animate-spin"></i> กำลังซิงก์ข้อมูล Cloud...';
+            } else if (mode === 'error') {
+                el.className = 'fixed bottom-4 right-4 bg-white/95 backdrop-blur border border-rose-200 text-rose-700 text-[11px] font-semibold px-3.5 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 z-50 cursor-pointer';
+                el.onclick = () => openCloudSyncModal();
+                el.innerHTML = '<i data-lucide="cloud-off" class="w-3.5 h-3.5 text-rose-500 inline"></i> บันทึกในเครื่องแล้ว (Cloud ขัดข้อง)';
+            } else if (hasCloud) {
+                el.className = 'fixed bottom-4 right-4 bg-white/95 backdrop-blur border border-emerald-200 text-emerald-700 text-[11px] font-semibold px-3.5 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 z-50 cursor-pointer';
+                el.onclick = () => openCloudSyncModal();
+                el.innerHTML = '<i data-lucide="cloud-check" class="w-3.5 h-3.5 text-emerald-500 inline"></i> ซิงก์ออนไลน์ทุกเครื่อง ' + t;
+            } else {
+                el.className = 'fixed bottom-4 right-4 bg-white/95 backdrop-blur border border-slate-200 text-slate-600 text-[11px] font-semibold px-3.5 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 z-50 cursor-pointer';
+                el.onclick = () => openCloudSyncModal();
+                el.innerHTML = '<i data-lucide="hard-drive" class="w-3.5 h-3.5 text-slate-400 inline"></i> บันทึกในเครื่อง ' + t + ' (คลิกเชื่อม Cloud)';
+            }
             if (window.lucide) lucide.createIcons();
         }
 
@@ -1482,14 +1922,14 @@
                 }
             });
 
-            saveToStorage();
+            saveToStorage(false);
             renderTable();
             showToast(selectState ? `เลือกโครงการที่กรองแล้ว ${currentlyFilteredProjects.length} รายการ` : 'ยกเลิกการเลือกโครงการที่กรองแล้ว', 'info');
         }
 
         function deselectAllProjects() {
             projects.forEach(p => p.selected = false);
-            saveToStorage();
+            saveToStorage(false);
             renderTable();
             showToast('ยกเลิกการเลือกทั้งหมดแล้ว', 'info');
         }
@@ -1902,7 +2342,7 @@
             const project = projects.find(p => p.id === id);
             if (project) {
                 project.selected = !project.selected;
-                saveToStorage();
+                saveToStorage(false);
                 renderTable();
             }
         }
@@ -1914,7 +2354,7 @@
                     p.selected = master.checked;
                 }
             });
-            saveToStorage();
+            saveToStorage(false);
             renderTable();
         }
 
